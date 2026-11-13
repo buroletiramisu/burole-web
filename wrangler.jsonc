@@ -1,6 +1,6 @@
-// Configuración de Cloudflare: publica esta carpeta en el Worker "burole"
+// Configuración de Cloudflare: publica esta carpeta en el Worker "burole-web"
 {
-  "name": "burole",
+  "name": "burole-web",
   "compatibility_date": "2026-10-01",
   "assets": {
     "directory": "./",

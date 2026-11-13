@@ -4,7 +4,7 @@ Sitio web de Burolé. HTML estático, sin build.
 
 ## Cómo se publica
 
-Cada push a `main` dispara un deploy automático en Cloudflare (Worker `burole`, vía Workers Builds).
+Cada push a `main` dispara un deploy automático en Cloudflare (Worker `burole-web`, vía Workers Builds).
 
 ## Estructura
 
