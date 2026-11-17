@@ -421,14 +421,18 @@ button.wa{font-family:inherit;cursor:pointer}
 
 <script>
 (function () {
-  // ===== Configuración: número de WhatsApp (con código de país, sin + ni espacios) y precios (0 = "a confirmar") =====
+  // ===== Configuración: número de WhatsApp (con código de país, sin + ni espacios) y precios por formato y sabor (sin precio = "a coordinar") =====
   var WHATSAPP = '5491140784385';
-  var PRECIOS = { por: 0, fam: 0, mini: 0 };
+  var PRECIOS = {
+    med: { clasico: 15000, pistacho: 22000 },
+    gde: { clasico: 30000, pistacho: 40000 },
+    mini: {}
+  };
 
   var FORMATOS = [
-    { id: 'por', num: '01', name: 'Porción', serves: '1 o 2 personas', desc: 'Para vos o para compartir de a dos. Nadie tiene por qué enterarse.' },
-    { id: 'fam', num: '02', name: 'Familiar', serves: '6 a 8 personas', desc: 'El que llevás a la cena y te hace quedar como un campeón.' },
-    { id: 'mini', num: '03', name: 'Minis para eventos', serves: 'Pack × 12', desc: 'Cumples, oficinas y mesas dulces. Un bocado, cero platos.' }
+    { id: 'med', num: '01', name: 'Porción mediana', serves: '17,5 × 13,5 cm', desc: 'Para vos o para compartir de a dos. Nadie tiene por qué enterarse.' },
+    { id: 'gde', num: '02', name: 'Porción grande', serves: '21,5 × 16,5 cm', desc: 'El que llevás a la cena y te hace quedar como un campeón.' },
+    { id: 'mini', num: '03', name: 'Minis para eventos', serves: 'Pack × 10', desc: 'Cumples, oficinas y mesas dulces. Un bocado, cero platos.' }
   ];
   var SABORES = [
     { id: 'clasico', name: 'Clásico', dot: '#f2dca6' },
@@ -440,6 +444,8 @@ button.wa{font-family:inherit;cursor:pointer}
   var $ = function (id) { return document.getElementById(id); };
 
   function money(n) { return '$ ' + Number(n).toLocaleString('es-AR'); }
+  function price(f, s) { return (PRECIOS[f] && PRECIOS[f][s]) || 0; }
+  function totalText(c) { return c.allPriced ? money(c.total) : c.total > 0 ? money(c.total) + ' + eventos a coordinar' : 'A coordinar'; }
   function waBase() { return 'https://wa.me/' + WHATSAPP.replace(/\D/g, '') + '?text='; }
   function el(tag, attrs, html) {
     var e = document.createElement(tag);
@@ -462,13 +468,12 @@ button.wa{font-family:inherit;cursor:pointer}
 
   // Cards de formato
   var cards = FORMATOS.map(function (f) {
-    var unit = PRECIOS[f.id] || 0;
     var a = el('article', { 'class': 'card', style: 'color:#2b1a14;border-radius:22.68px;padding:32px 28px 26px;display:flex;flex-direction:column;gap:14px' },
       '<div style="display:flex;justify-content:space-between;align-items:center;gap:12px"><span style="font-size:12px;font-weight:600;letter-spacing:.16em;text-transform:uppercase;color:#6a151c">' + f.serves + '</span><span class="ys" style="font-size:15px;color:#6a151c">' + f.num + '</span></div>' +
       '<div style="height:1px;background:#e6d3ae"></div>' +
       '<h3 class="ys" style="margin:10px 0 0;font-size:32px;line-height:1.05;color:#6a151c">' + f.name + '</h3>' +
       '<p style="margin:0;font-size:15.5px;line-height:1.6;color:#6b4a40;flex:1 1 auto">' + f.desc + '</p>' +
-      '<p class="ys" style="margin:0;font-size:24px;color:#6a151c">' + (unit > 0 ? money(unit) : 'Precio a confirmar') + '</p>' +
+      '<p data-r="price" class="ys" style="margin:0;font-size:24px;color:#6a151c"></p>' +
       '<div style="display:flex;flex-direction:column;gap:12px;padding-top:16px;border-top:1px solid #e6d3ae">' +
         '<span data-r="flabel" style="font-size:12px;font-weight:600;letter-spacing:.16em;text-transform:uppercase;color:#6b4a40"></span>' +
         '<div style="display:flex;align-items:center;justify-content:space-between;gap:12px">' +
@@ -484,7 +489,7 @@ button.wa{font-family:inherit;cursor:pointer}
     q('dec').addEventListener('click', function () { change(f.id + '|' + state.flavor, -1); });
     q('inc').addEventListener('click', function () { change(f.id + '|' + state.flavor, 1); });
     $('formats').appendChild(a);
-    return { f: f, unit: unit, root: a, q: q };
+    return { f: f, root: a, q: q };
   });
 
   // Retiro / Envío
@@ -509,9 +514,10 @@ button.wa{font-family:inherit;cursor:pointer}
         if (n > 0) {
           count += n;
           if (c.f.id === 'mini') hasMini = true;
-          var sub = c.unit * n;
-          if (c.unit > 0) total += sub; else allPriced = false;
-          lines.push({ label: n + ' × ' + c.f.name + ' · ' + s.name, wa: n + ' × ' + c.f.name + ' (' + s.name + ')', sub: c.unit > 0 ? money(sub) : 'A confirmar', subWa: c.unit > 0 ? money(sub) : 'a confirmar' });
+          var unit = price(c.f.id, s.id);
+          var sub = unit * n;
+          if (unit > 0) total += sub; else allPriced = false;
+          lines.push({ label: n + ' × ' + c.f.name + ' · ' + s.name, wa: n + ' × ' + c.f.name + ' (' + s.name + ')', sub: unit > 0 ? money(sub) : 'A coordinar', subWa: unit > 0 ? money(sub) : 'a coordinar' });
         }
       });
     });
@@ -534,6 +540,8 @@ button.wa{font-family:inherit;cursor:pointer}
       SABORES.forEach(function (s) { tot += state.qty[c.f.id + '|' + s.id] || 0; });
       c.root.style.background = tot > 0 ? '#f2dca6' : '#fbf3e2';
       c.q('qty').textContent = n;
+      var unit = price(c.f.id, state.flavor);
+      c.q('price').textContent = unit > 0 ? money(unit) : 'A coordinar';
       c.q('incart').textContent = tot > 0 ? tot + ' en tu pedido' : '';
       c.q('flabel').textContent = 'Sabor · ' + flavorName;
       c.q('inc').setAttribute('aria-label', 'Sumar ' + c.f.name + ' ' + flavorName);
@@ -561,12 +569,12 @@ button.wa{font-family:inherit;cursor:pointer}
       r.appendChild(el('span')).textContent = l.sub;
       box.appendChild(r);
     });
-    $('ord-total').textContent = c.allPriced ? money(c.total) : 'A confirmar';
+    $('ord-total').textContent = totalText(c);
     $('date-note').textContent = c.hasMini ? 'Eventos: pedilo con 72 h de anticipación.' : 'Pedilo con 24 h de anticipación.';
 
     var showBar = c.count > 0 && !state.atPanel;
     $('cartbar').hidden = !showBar;
-    $('bar-label').textContent = c.count + (c.count === 1 ? ' producto' : ' productos') + ' · ' + (c.allPriced ? money(c.total) : 'total a confirmar');
+    $('bar-label').textContent = c.count + (c.count === 1 ? ' producto' : ' productos') + ' · ' + totalText(c);
     $('floats').classList.toggle('up', showBar);
   }
 
@@ -613,7 +621,7 @@ button.wa{font-family:inherit;cursor:pointer}
       '*Pedido*'
     ].concat(c.lines.map(function (l) { return '• ' + l.wa + ' — ' + l.subWa; })).concat([
       '',
-      '*Total:* ' + (c.allPriced ? money(c.total) : 'A confirmar'),
+      '*Total:* ' + totalText(c),
       '',
       'Espero la confirmación. ¡Gracias!'
     ]).join('\n');
