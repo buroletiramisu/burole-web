@@ -466,7 +466,12 @@ button.wa{font-family:inherit;cursor:pointer}
 
   // Medición: eventos al dataLayer para GTM / GA4
   window.dataLayer = window.dataLayer || [];
-  function track(ev) { try { window.dataLayer.push(ev); } catch (e) {} }
+  // Cada evento lleva todos los parámetros (vacíos si no aplican) para que no se arrastren valores del evento anterior
+  var PARAMS = { cta_location: undefined, social_network: undefined, pedido_codigo: undefined, entrega: undefined, value: undefined, currency: undefined };
+  function track(ev) {
+    if (ev.event) ev = Object.assign({}, PARAMS, ev);
+    try { window.dataLayer.push(ev); } catch (e) {}
+  }
   document.addEventListener('click', function (e) {
     var a = e.target.closest ? e.target.closest('[data-wa],[data-social]') : null;
     if (!a) return;
@@ -529,7 +534,7 @@ button.wa{font-family:inherit;cursor:pointer}
       var s = SABORES.filter(function (x) { return x.id === k[1]; })[0];
       var unit = price(k[0], k[1]);
       track({ ecommerce: null });
-      track({ event: 'add_to_cart', ecommerce: { currency: 'ARS', value: unit, items: [{ item_id: key.replace('|', '_'), item_name: f.name, item_variant: s.name, price: unit, quantity: 1 }] } });
+      track({ event: 'add_to_cart', cta_location: 'card_formato', value: unit, currency: 'ARS', ecommerce: { currency: 'ARS', value: unit, items: [{ item_id: key.replace('|', '_'), item_name: f.name, item_variant: s.name, price: unit, quantity: 1 }] } });
     }
     setErr('');
     render();
@@ -666,6 +671,8 @@ button.wa{font-family:inherit;cursor:pointer}
       cta_location: 'pedido_form',
       pedido_codigo: code,
       entrega: envio ? 'envio' : 'retiro',
+      value: c.total,
+      currency: 'ARS',
       ecommerce: {
         transaction_id: code,
         currency: 'ARS',
