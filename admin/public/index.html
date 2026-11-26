@@ -128,6 +128,11 @@ tfoot td{background:var(--panel2);font-weight:600;color:var(--crema)}
 .pago{display:inline-flex;align-items:center;gap:8px;cursor:pointer;font-size:13px;color:var(--suave);white-space:nowrap}
 .pago input{width:20px;height:20px;accent-color:var(--verde2);cursor:pointer;margin:0}
 .falta{color:var(--alerta)}
+.pg{display:inline-flex;align-items:center;gap:6px;min-height:30px;padding:0 12px;border-radius:999px;font-size:12.5px;font-weight:700;cursor:pointer;white-space:nowrap;background:transparent;border:1.5px solid}
+.pg.no{border-color:rgba(224,122,128,.6);color:var(--rojo)}
+.pg.sena{border-color:var(--alerta);color:var(--alerta)}
+.pg.si{border-color:var(--verde2);color:var(--verde2)}
+.opt.sena[aria-pressed="true"]{background:var(--alerta);border-color:var(--alerta);color:#2b1a14}
 /* Lista en celular */
 .lista{display:none;flex-direction:column;gap:10px}
 .pc{background:var(--panel);border:1px solid var(--linea);border-radius:18px;padding:14px 16px;display:flex;flex-direction:column;gap:10px;border-left:4px solid var(--bordo2)}
@@ -360,8 +365,9 @@ dialog::backdrop{background:rgba(10,5,4,.72)}
   <form class="mf" id="form" method="dialog">
     <div class="mf-h"><h2 class="cap" id="dlg-t">Nuevo pedido</h2><button type="button" class="icon-btn" data-cerrar aria-label="Cerrar">✕</button></div>
     <div class="mf-b">
+      <div class="fld"><label class="fl" for="p-cliente">Cliente</label><input class="inp" id="p-cliente" list="dl-clientes" autocomplete="off" placeholder="Nombre" required><span class="hint" id="p-cliente-h"></span></div>
       <div class="fgrid">
-        <div class="fld"><label class="fl" for="p-cliente">Cliente</label><input class="inp" id="p-cliente" list="dl-clientes" autocomplete="off" placeholder="Nombre" required><span class="hint" id="p-cliente-h"></span></div>
+        <div class="fld"><label class="fl" for="p-pedido">Pedido el</label><input class="inp" id="p-pedido" type="date"></div>
         <div class="fld"><label class="fl" for="p-fecha">Entrega</label><input class="inp" id="p-fecha" type="date" required></div>
       </div>
       <datalist id="dl-clientes"></datalist>
@@ -373,7 +379,7 @@ dialog::backdrop{background:rgba(10,5,4,.72)}
       </div>
       <div class="fgrid">
         <div class="fld"><span class="fl">Estado</span><div class="opts" id="p-hecho"><button type="button" class="opt no" data-v="0">No hecho</button><button type="button" class="opt si" data-v="1">Hecho</button></div></div>
-        <div class="fld"><span class="fl">Pago</span><div class="opts" id="p-pagado"><button type="button" class="opt no" data-v="0">Falta cobrar</button><button type="button" class="opt si" data-v="1">Pagado</button></div></div>
+        <div class="fld"><span class="fl">Pago</span><div class="opts" id="p-pagado"><button type="button" class="opt no" data-v="0">Sin cobrar</button><button type="button" class="opt sena" data-v="sena">Seña 50%</button><button type="button" class="opt si" data-v="1">Pagado</button></div></div>
       </div>
       <div class="fgrid" id="p-extra"></div>
       <div class="fld"><label class="fl" for="p-nota">Nota</label><input class="inp" id="p-nota" placeholder="Ej: sin cacao arriba"></div>
@@ -567,13 +573,14 @@ dialog::backdrop{background:rgba(10,5,4,.72)}
     var act = D.pedido.filter(function (p) { return enRango(p.fecha); });
     var fact = act.reduce(function (s, p) { return s + total(p); }, 0);
     var sinCobrar = D.pedido.filter(function (p) { return !p.pagado; });
+    var resta = sinCobrar.reduce(function (s, p) { return s + restante(p); }, 0);
     var noHechos = D.pedido.filter(function (p) { return !p.hecho; });
     var unidades = act.reduce(function (s, p) { return s + lineas(p).reduce(function (a, l) { return a + l.q; }, 0); }, 0);
     $('kpis').innerHTML =
       kpi('Facturación', money(fact), act.length + ' pedidos · ' + unidades + ' tiramisús', 'hero') +
       kpi('Pedidos por la web', act.filter(function (p) { return p.canal === 'web'; }).length, act.length ? Math.round(act.filter(function (p) { return p.canal === 'web'; }).length / act.length * 100) + '% del total' : 'en el período') +
       kpi('Para hacer', noHechos.length, noHechos.length ? 'pedidos sin hacer' : 'nada pendiente 🎉', noHechos.length ? 'alerta' : '') +
-      kpi('Falta cobrar', money(sinCobrar.reduce(function (s, p) { return s + total(p); }, 0)), sinCobrar.length + ' pedidos', sinCobrar.length ? 'alerta' : '');
+      kpi('Falta cobrar', money(resta), sinCobrar.length + ' pedidos' + (sinCobrar.some(function (p) { return p.sena; }) ? ' · descontando señas' : ''), sinCobrar.length ? 'alerta' : '');
 
     var ph = noHechos.slice().sort(function (a, b) { return a.fecha < b.fecha ? -1 : 1; }).slice(0, 8);
     $('para-hacer').innerHTML = ph.length ? '<div class="lista" style="display:flex">' + ph.map(tarjetaPedido).join('') + '</div>' : '<p class="vacio">No hay pedidos pendientes. Cargá uno con “+ Nuevo pedido”.</p>';
@@ -594,9 +601,12 @@ dialog::backdrop{background:rgba(10,5,4,.72)}
 
   // ===== PEDIDOS =====
   function estBtn(p) { return '<button type="button" class="est ' + (p.hecho ? 'si' : 'no') + '" data-hecho="' + esc(p.id) + '">' + (p.hecho ? 'Hecho' : 'No hecho') + '</button>'; }
-  function pagoBox(p) { return '<label class="pago' + (p.pagado ? '' : ' falta') + '"><input type="checkbox" data-pago="' + esc(p.id) + '"' + (p.pagado ? ' checked' : '') + '>' + (p.pagado ? 'Pagado' : 'Sin cobrar') + '</label>'; }
+  function estPago(p) { return p.pagado ? 'si' : p.sena ? 'sena' : 'no'; }
+  function restante(p) { return p.pagado ? 0 : p.sena ? total(p) / 2 : total(p); }
+  var PAGO_TXT = { no: 'Sin cobrar', sena: 'Seña 50%', si: 'Pagado' };
+  function pagoBox(p) { var e = estPago(p); return '<button type="button" class="pg ' + e + '" data-pago="' + esc(p.id) + '" title="Tocá para cambiar">' + (e === 'si' ? '✓ ' : '$ ') + PAGO_TXT[e] + '</button>'; }
   function tarjetaPedido(p) {
-    return '<article class="pc' + (p.hecho ? ' hecho' : '') + '" data-edit="' + esc(p.id) + '"><div class="pc-t"><b>' + esc(nombreCli(p)) + '</b><span>' + cuando(p.fecha) + ' · ' + esc(canal(p.canal)) + '</span></div><ul>' +
+    return '<article class="pc' + (p.hecho ? ' hecho' : '') + '" data-edit="' + esc(p.id) + '"><div class="pc-t"><b>' + esc(nombreCli(p)) + '</b><span>' + cuando(p.fecha) + (p.canal ? ' · ' + esc(canal(p.canal)) : '') + '</span></div><ul>' +
       lineas(p).map(function (l) { return '<li><span class="dot" style="background:' + esc(l.p.color) + '"></span>' + l.q + ' × ' + esc(l.p.nombre) + '<span class="m num">' + (l.precio ? l.q + ' × ' + money(l.precio) : 'a coordinar') + '</span></li>'; }).join('') +
       (+p.ajuste ? '<li><span class="dot" style="background:transparent"></span>' + (p.entrega === 'envio' ? 'Envío / ajuste' : 'Ajuste') + '<span class="m num">' + money(p.ajuste) + '</span></li>' : '') +
       (p.nota ? '<li style="color:var(--tenue)">✎ ' + esc(p.nota) + '</li>' : '') +
@@ -619,9 +629,9 @@ dialog::backdrop{background:rgba(10,5,4,.72)}
     var h = '<thead><tr><th>Entrega</th><th>Cliente</th>' + prods.map(function (x) { return '<th class="c"><span class="dot" style="background:' + esc(x.color) + ';margin-right:6px;vertical-align:middle"></span>' + esc(x.nombre) + '</th>'; }).join('') + '<th>Canal</th><th>Estado · pago</th><th class="r">Total</th></tr></thead><tbody>';
     rows.forEach(function (p) {
       suma += total(p);
-      h += '<tr data-edit="' + esc(p.id) + '"><td class="num">' + cuando(p.fecha) + '</td><td>' + esc(nombreCli(p)) + (p.nota ? '<span class="sub">✎ ' + esc(p.nota) + '</span>' : '') + '</td>' +
+      h += '<tr data-edit="' + esc(p.id) + '"><td class="num">' + cuando(p.fecha) + (p.pedidoEl ? '<span class="sub">pedido ' + corta(p.pedidoEl) + '</span>' : '') + '</td><td>' + esc(nombreCli(p)) + (p.nota ? '<span class="sub">✎ ' + esc(p.nota) + '</span>' : '') + '</td>' +
         prods.map(function (x) { var q = p.items[x.id] || 0; tot[x.id] = (tot[x.id] || 0) + q; return '<td class="c"><span class="qty num' + (q ? '' : ' z') + '">' + (q || '·') + '</span>' + (q && precioDe(p, x.id) ? '<span class="sub num">' + money(q * precioDe(p, x.id)) + '</span>' : '') + '</td>'; }).join('') +
-        '<td><span class="tag">' + esc(canal(p.canal)) + '</span><span class="sub">' + (p.entrega === 'envio' ? 'Envío' : 'Retiro') + '</span></td><td><div style="display:flex;flex-direction:column;gap:6px;align-items:flex-start">' + estBtn(p) + pagoBox(p) + '</div></td><td class="r num ys" style="font-size:16px;color:var(--crema)">' + money(total(p)) + '</td></tr>';
+        '<td>' + (p.canal ? '<span class="tag">' + esc(canal(p.canal)) + '</span>' : '') + '<span class="sub">' + (p.entrega === 'envio' ? 'Envío' : 'Retiro') + '</span></td><td><div style="display:flex;flex-direction:column;gap:6px;align-items:flex-start">' + estBtn(p) + pagoBox(p) + '</div></td><td class="r num ys" style="font-size:16px;color:var(--crema)">' + money(total(p)) + '</td></tr>';
     });
     if (!rows.length) h += '<tr><td colspan="' + (prods.length + 5) + '" class="vacio">No hay pedidos acá. Tocá “+ Nuevo pedido” para cargar uno.</td></tr>';
     h += '</tbody>' + (rows.length ? '<tfoot><tr><td colspan="2">' + rows.length + ' pedidos</td>' + prods.map(function (x) { return '<td class="c num">' + (tot[x.id] || 0) + '</td>'; }).join('') + '<td colspan="2"></td><td class="r num">' + money(suma) + '</td></tr></tfoot>' : '');
@@ -630,9 +640,9 @@ dialog::backdrop{background:rgba(10,5,4,.72)}
   }
   $('buscar').addEventListener('input', renderPedidos);
   $('csv').addEventListener('click', function () {
-    var lin = [['Fecha entrega', 'Cliente'].concat(cfg.productos.map(function (x) { return x.nombre; }), ['Ajuste', 'Canal', 'Entrega', 'Estado', 'Pago', 'Total', 'Nota'])];
+    var lin = [['Fecha pedido', 'Fecha entrega', 'Cliente'].concat(cfg.productos.map(function (x) { return x.nombre; }), ['Ajuste', 'Canal', 'Entrega', 'Estado', 'Pago', 'Total', 'Nota'])];
     filtrados().forEach(function (p) {
-      lin.push([p.fecha, nombreCli(p)].concat(cfg.productos.map(function (x) { return p.items[x.id] || 0; }), [+p.ajuste || 0, canal(p.canal), p.entrega === 'envio' ? 'Envío' : 'Retiro', p.hecho ? 'Hecho' : 'No hecho', p.pagado ? 'Pagado' : 'Sin cobrar', total(p), p.nota || '']));
+      lin.push([p.pedidoEl || '', p.fecha, nombreCli(p)].concat(cfg.productos.map(function (x) { return p.items[x.id] || 0; }), [+p.ajuste || 0, canal(p.canal), p.entrega === 'envio' ? 'Envío' : 'Retiro', p.hecho ? 'Hecho' : 'No hecho', PAGO_TXT[estPago(p)], total(p), p.nota || '']));
     });
     var csv = '﻿' + lin.map(function (r) { return r.map(function (c) { return '"' + String(c).replace(/"/g, '""') + '"'; }).join(';'); }).join('\n');
     var a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' })); a.download = 'pedidos-burole-' + HOY + '.csv'; a.click();
@@ -648,13 +658,17 @@ dialog::backdrop{background:rgba(10,5,4,.72)}
       p = buscarPed(b.dataset.hecho); if (!p) return;
       p.hecho = !p.hecho; guardar('pedido', p, p.hecho ? '¡Pedido hecho!' : 'Marcado como no hecho'); return render();
     }
-    if (t.closest('.pago')) return;
+    if ((b = t.closest('[data-pago]'))) {
+      p = buscarPed(b.dataset.pago); if (!p) return;
+      var sig = { no: 'sena', sena: 'si', si: 'no' }[estPago(p)];
+      p.sena = sig !== 'no'; p.pagado = sig === 'si';
+      guardar('pedido', p, sig === 'si' ? 'Cobrado ✓' : sig === 'sena' ? 'Seña registrada' : 'Marcado sin cobrar'); return render();
+    }
     if ((b = t.closest('[data-edit]'))) return abrirPedido(buscarPed(b.dataset.edit));
     if (t.closest('[data-cerrar]')) return t.closest('dialog').close();
   });
   document.addEventListener('change', function (e) {
     var t = e.target, p;
-    if (t.dataset.pago && (p = buscarPed(t.dataset.pago))) { p.pagado = t.checked; guardar('pedido', p, p.pagado ? 'Cobrado ✓' : 'Marcado sin cobrar'); render(); }
   });
   function buscarPed(id) { for (var i = 0; i < D.pedido.length; i++) if (D.pedido[i].id === id) return D.pedido[i]; }
 
@@ -663,11 +677,11 @@ dialog::backdrop{background:rgba(10,5,4,.72)}
   function opts(el, val) { $$('.opt', el).forEach(function (o) { o.setAttribute('aria-pressed', o.dataset.v === String(val)); }); }
   function abrirPedido(p, clienteNombre) {
     edit = p || null;
-    form = p ? JSON.parse(JSON.stringify(p)) : { id: uid(), creado: Date.now(), fecha: HOY, items: {}, canal: 'web', entrega: 'retiro', ajuste: 0, hecho: false, pagado: false, nota: '', extra: {} };
+    form = p ? JSON.parse(JSON.stringify(p)) : { id: uid(), creado: Date.now(), fecha: HOY, pedidoEl: HOY, items: {}, canal: '', entrega: 'retiro', ajuste: 0, hecho: false, pagado: false, nota: '', extra: {} };
     form.extra = form.extra || {};
     $('dlg-t').textContent = p ? 'Editar pedido' : 'Nuevo pedido';
     $('p-cliente').value = p ? nombreCli(p) : (clienteNombre || '');
-    $('p-fecha').value = form.fecha; $('p-ajuste').value = form.ajuste || ''; $('p-nota').value = form.nota || '';
+    $('p-fecha').value = form.fecha; $('p-pedido').value = form.pedidoEl || ''; $('p-ajuste').value = form.ajuste || ''; $('p-nota').value = form.nota || '';
     $('dl-clientes').innerHTML = D.cliente.map(function (c) { return '<option value="' + esc(c.nombre) + '">'; }).join('');
     $('p-canal').innerHTML = cfg.canales.map(function (c) { return '<button type="button" class="opt" data-v="' + esc(c.id) + '">' + esc(c.nombre) + '</button>'; }).join('');
     $('p-extra').innerHTML = cfg.campos.map(function (c) { return '<div class="fld"><label class="fl" for="x-' + esc(c.id) + '">' + esc(c.nombre) + '</label><input class="inp" id="x-' + esc(c.id) + '" data-extra="' + esc(c.id) + '" value="' + esc(form.extra[c.id] || '') + '"></div>'; }).join('');
@@ -677,7 +691,7 @@ dialog::backdrop{background:rgba(10,5,4,.72)}
         '<div class="step"><button type="button" data-menos aria-label="Uno menos">−</button><input type="number" inputmode="numeric" min="0" aria-label="Cantidad ' + esc(x.nombre) + '"><button type="button" class="mas" data-mas aria-label="Uno más">+</button></div></div>';
     }).join('');
     $$('.pr').forEach(function (r) { r.querySelector('input').value = form.items[r.dataset.pr] || 0; });
-    opts($('p-canal'), form.canal); opts($('p-entrega'), form.entrega); opts($('p-hecho'), form.hecho ? 1 : 0); opts($('p-pagado'), form.pagado ? 1 : 0);
+    opts($('p-canal'), form.canal); opts($('p-entrega'), form.entrega); opts($('p-hecho'), form.hecho ? 1 : 0); opts($('p-pagado'), form.pagado ? 1 : form.sena ? 'sena' : 0);
     $('p-borrar').hidden = !p;
     actualizar(); hintCliente();
     $('dlg').showModal();
@@ -704,7 +718,12 @@ dialog::backdrop{background:rgba(10,5,4,.72)}
   $('p-prods').addEventListener('input', actualizar);
   $('p-ajuste').addEventListener('input', actualizar);
   ['p-canal', 'p-entrega', 'p-hecho', 'p-pagado'].forEach(function (id) {
-    $(id).addEventListener('click', function (e) { var o = e.target.closest('.opt'); if (o) opts($(id), o.dataset.v); });
+    $(id).addEventListener('click', function (e) {
+      var o = e.target.closest('.opt'); if (!o) return;
+      // El canal se puede dejar sin marcar (tocando de nuevo)
+      if (id === 'p-canal' && o.getAttribute('aria-pressed') === 'true') return o.setAttribute('aria-pressed', 'false');
+      opts($(id), o.dataset.v);
+    });
   });
   function sel(id) { var o = $(id).querySelector('[aria-pressed="true"]'); return o ? o.dataset.v : null; }
   $('form').addEventListener('submit', function (e) {
@@ -716,7 +735,8 @@ dialog::backdrop{background:rgba(10,5,4,.72)}
     if (!c) { c = { id: uid(), nombre: nombre, telefono: '', direccion: '', nota: '', creado: Date.now() }; D.cliente.push(c); guardar('cliente', c); }
     form.clienteId = c.id; form.cliente = c.nombre;
     form.fecha = $('p-fecha').value || HOY; form.nota = $('p-nota').value.trim();
-    form.canal = sel('p-canal'); form.entrega = sel('p-entrega'); form.hecho = sel('p-hecho') === '1'; form.pagado = sel('p-pagado') === '1';
+    form.canal = sel('p-canal'); form.entrega = sel('p-entrega'); form.hecho = sel('p-hecho') === '1'; form.pagado = sel('p-pagado') === '1'; form.sena = sel('p-pagado') !== '0'; form.pedidoEl = $('p-pedido').value || '';
+    form.canal = form.canal || '';
     $$('[data-extra]').forEach(function (i) { form.extra[i.dataset.extra] = i.value.trim(); });
     // Se guarda el precio del momento: si después cambian los precios, los pedidos viejos no se alteran
     form.precios = form.precios || {};
