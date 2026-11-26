@@ -15,6 +15,7 @@ Cada push a `main` dispara un deploy automático en Cloudflare (Worker `burole-w
 - `_headers`: cabeceras de seguridad y caché
 - `wrangler.jsonc`: configuración de Cloudflare
 - `.assetsignore`: archivos que no se publican
+- `admin/`: panel interno (admin.burole.com.ar), se publica aparte en el Worker `burole-admin`. Ver `admin/README.md`
 - `Imagenes/`, `Redes/`: material original y piezas de redes (no se suben al repo ni se publican)
 
 El diseño sale del canvas "Burolé — Landing web" en Claude.

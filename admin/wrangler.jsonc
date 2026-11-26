@@ -1,0 +1,11 @@
+// Configuración de Cloudflare: publica esta carpeta (admin/) en el Worker "burole-admin", en admin.burole.com.ar
+{
+  "name": "burole-admin",
+  "compatibility_date": "2026-10-01",
+  "assets": {
+    "directory": "./"
+  },
+  "routes": [
+    { "pattern": "admin.burole.com.ar", "custom_domain": true }
+  ]
+}
