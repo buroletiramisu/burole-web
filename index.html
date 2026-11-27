@@ -19,6 +19,67 @@ j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
 <meta property="og:description" content="Capa por capa. Una sola cosa, hecha bien. Pedí por WhatsApp.">
 <meta property="og:url" content="https://burole.com.ar/">
 <meta property="og:image" content="https://burole.com.ar/assets/img/receta.jpg">
+<meta property="og:image:type" content="image/jpeg">
+<meta property="og:image:width" content="1195">
+<meta property="og:image:height" content="896">
+<meta property="og:image:alt" content="Tiramisú artesanal Burolé">
+<meta property="og:locale" content="es_AR">
+<meta property="og:site_name" content="Burolé">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Burolé · Tiramisú artesanal">
+<meta name="twitter:description" content="Capa por capa. Una sola cosa, hecha bien. Pedí por WhatsApp.">
+<meta name="twitter:image" content="https://burole.com.ar/assets/img/receta.jpg">
+<meta name="twitter:image:alt" content="Tiramisú artesanal Burolé">
+<!-- Datos estructurados. Si cambian los precios en PRECIOS (script de abajo), actualizarlos también acá. -->
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@graph": [
+    {
+      "@type": "Bakery",
+      "@id": "https://burole.com.ar/#negocio",
+      "name": "Burolé",
+      "description": "Tiramisú artesanal hecho a mano en Zona Norte. Clásico y Pistacho, en porción mediana, grande o minis para eventos.",
+      "url": "https://burole.com.ar/",
+      "image": "https://burole.com.ar/assets/img/receta.jpg",
+      "telephone": "+5491140784385",
+      "priceRange": "$$",
+      "servesCuisine": "Postres",
+      "currenciesAccepted": "ARS",
+      "address": {
+        "@type": "PostalAddress",
+        "addressLocality": "Florida, Vicente López",
+        "addressRegion": "Buenos Aires",
+        "addressCountry": "AR"
+      },
+      "areaServed": ["Vicente López", "Olivos", "Martínez", "Núñez"],
+      "sameAs": ["https://instagram.com/burole_tiramisu"]
+    },
+    {
+      "@type": "Product",
+      "name": "Tiramisú Clásico",
+      "description": "Tiramisú artesanal clásico, hecho a mano.",
+      "image": "https://burole.com.ar/assets/img/receta.jpg",
+      "brand": { "@type": "Brand", "name": "Burolé" },
+      "offers": [
+        { "@type": "Offer", "name": "Porción mediana (17,5 × 13,5 cm)", "price": "18000", "priceCurrency": "ARS", "availability": "https://schema.org/InStock", "url": "https://burole.com.ar/", "seller": { "@id": "https://burole.com.ar/#negocio" } },
+        { "@type": "Offer", "name": "Porción grande (21,5 × 16,5 cm)", "price": "28000", "priceCurrency": "ARS", "availability": "https://schema.org/InStock", "url": "https://burole.com.ar/", "seller": { "@id": "https://burole.com.ar/#negocio" } }
+      ]
+    },
+    {
+      "@type": "Product",
+      "name": "Tiramisú de Pistacho",
+      "description": "Tiramisú artesanal de pistacho, hecho a mano.",
+      "image": "https://burole.com.ar/assets/img/receta.jpg",
+      "brand": { "@type": "Brand", "name": "Burolé" },
+      "offers": [
+        { "@type": "Offer", "name": "Porción mediana (17,5 × 13,5 cm)", "price": "28000", "priceCurrency": "ARS", "availability": "https://schema.org/InStock", "url": "https://burole.com.ar/", "seller": { "@id": "https://burole.com.ar/#negocio" } },
+        { "@type": "Offer", "name": "Porción grande (21,5 × 16,5 cm)", "price": "36000", "priceCurrency": "ARS", "availability": "https://schema.org/InStock", "url": "https://burole.com.ar/", "seller": { "@id": "https://burole.com.ar/#negocio" } }
+      ]
+    }
+  ]
+}
+</script>
 <link rel="icon" href="/favicon.svg" type="image/svg+xml">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -433,6 +494,7 @@ button.wa{font-family:inherit;cursor:pointer}
 (function () {
   // ===== Configuración: número de WhatsApp (con código de país, sin + ni espacios) y precios por formato y sabor (sin precio = "a coordinar") =====
   var WHATSAPP = '5491140784385';
+  // Si cambiás precios, actualizá también el JSON-LD del <head>.
   var PRECIOS = {
     med: { clasico: 18000, pistacho: 28000 },
     gde: { clasico: 28000, pistacho: 36000 },
