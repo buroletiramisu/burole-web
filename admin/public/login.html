@@ -168,7 +168,7 @@ form{display:flex;flex-direction:column;gap:28px}
     var u = document.getElementById('usuario').value.trim(), c = clave.value;
     if (!u || !c) return fallo('Completá usuario y contraseña.');
     err.textContent = ''; btn.disabled = true; btn.classList.add('cargando');
-    fetch('/api/login', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ usuario: u, clave: c }) })
+    fetch('/api/login', { method: 'POST', headers: { 'content-type': 'application/json', 'x-burole': '1' }, body: JSON.stringify({ usuario: u, clave: c }) })
       .then(function (r) { return r.json().then(function (d) { return { ok: r.ok, d: d }; }); })
       .then(function (x) { if (x.ok) location.href = '/'; else fallo(x.d.error || 'No se pudo ingresar.'); })
       .catch(function () { fallo('Sin conexión. Probá de nuevo.'); });
