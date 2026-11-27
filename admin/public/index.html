@@ -909,6 +909,25 @@ dialog::backdrop{background:rgba(10,5,4,.72)}
     renderAjustes();
   });
 
+  // ===== En vivo: cada 20 s mira si cambió algo (por ejemplo, una fila nueva en el Google Sheet) y recarga =====
+  var version = null;
+  function vivo() {
+    api('GET', '/api/version').then(function (r) { version = r.v; }).catch(function () {});
+    setInterval(function () {
+      if (document.hidden || $('dlg').open || $('dlg-cl').open || borrador) return;
+      api('GET', '/api/version').then(function (r) {
+        if (version === null || r.v === version) { version = r.v; return; }
+        version = r.v;
+        return api('GET', '/api/datos').then(function (d) {
+          if ($('dlg').open || $('dlg-cl').open || borrador) return;
+          D = d;
+          if (d.config.general) cfg = { productos: d.config.general.productos || cfg.productos, canales: d.config.general.canales || cfg.canales, campos: d.config.general.campos || [] };
+          render();
+        });
+      }).catch(function () {});
+    }, 20000);
+  }
+
   // ===== Inicio =====
   marcarRango();
   api('GET', '/api/datos').then(function (d) {
@@ -920,6 +939,7 @@ dialog::backdrop{background:rgba(10,5,4,.72)}
       TAREAS_BASE.forEach(function (t, i) { var x = { id: uid() + i, col: t.col, texto: t.texto, link: t.link, orden: Date.now() - i }; D.tarea.push(x); guardar('tarea', x); });
     }
     $('cargando').hidden = true;
+    vivo();
     irA(TITULOS[location.hash.slice(1)] ? location.hash.slice(1) : 'resumen');
   }).catch(function (e) {
     if (e.message !== 'sesion') { $('cargando').innerHTML = '<p class="vacio">No se pudo cargar. <a href="" style="color:var(--crema)">Reintentar</a></p>'; }
