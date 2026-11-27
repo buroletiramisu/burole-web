@@ -10,18 +10,18 @@ Cargás o cambiás un pedido en el Sheet y en menos de 30 segundos aparece en ad
 Si borrás una fila del Sheet, el pedido se borra del panel. Los pedidos del Sheet mandan: si editás uno de esos en el panel, el próximo cambio del Sheet lo pisa. Los pedidos cargados a mano en el panel no se tocan.
 
 ## Formato de la hoja
-Pestaña llamada **Pedidos**. Fila 1 con estos encabezados (orden libre):
+Usa el Sheet **Burole General**, pestaña **Clientes Estado**, tal como está hoy. No hace falta cambiar nada:
 
-`ID | Fecha pedido | Fecha entrega | Cliente | Clásico mediano | Clásico grande | Pistacho mediano | Pistacho grande | Minis × 10 | Ajuste | Canal | Entrega | Estado | Pago | Nota`
+`Fecha Pedido | Clientes | Fecha Entrega | Telefono | Pedido | Unidades | $$ | $$ Total | Hecho | Seña (50%) | Pago | (nota)`
 
-- Productos: mismo nombre que en Ajustes del panel; el valor es la cantidad.
-- Canal: Web, WhatsApp, Instagram o Conocido. Entrega: Retiro o Envío.
-- Estado: Hecho / No hecho. Pago: Sin cobrar / Seña / Pagado.
-- ID: lo completa el script, dejala vacía. Una columna "Total" se ignora (el panel calcula el total).
+- Una fila por producto. Las filas con la misma Fecha Pedido + Cliente + Fecha Entrega se juntan en un solo pedido.
+- Pedido: nombre del producto igual que en Ajustes del panel (tildes y mayúsculas no importan).
+- Hecho / Seña / Pago: "Si" o "No". Teléfono y la última columna (ej. "Entregado") van a la nota.
+- El total lo calcula el panel con los precios de Ajustes (hoy coinciden con la columna $$).
 
 ## Instalación (una vez)
 1. Generar una clave: en la terminal `openssl rand -hex 32` (o pedírsela a Claude).
 2. Cloudflare › Workers › burole-admin › Settings › Variables and Secrets › agregar secreto `SHEET_TOKEN` con esa clave.
-3. En el Sheet: Extensiones › Apps Script › pegar `apps-script.gs` › Guardar.
+3. En el Sheet Burole General: Extensiones › Apps Script › pegar `apps-script.gs` › Guardar.
 4. En Apps Script: Configuración del proyecto › Propiedades del script › agregar `SHEET_TOKEN` con la misma clave.
 5. Elegir la función `instalar` › Ejecutar › aceptar permisos. Listo.
