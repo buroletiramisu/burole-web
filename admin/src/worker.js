@@ -1,4 +1,5 @@
 // Burolé Admin: login con usuario y contraseña, sesiones y datos (pedidos, clientes, tareas, ajustes) en D1.
+// Secreto extra: SHEET_TOKEN (clave larga que comparte con el Apps Script del Google Sheet, ver admin/sheet/README.md)
 // Secretos del Worker: ADMIN_USER y ADMIN_HASH ("salt:hash" PBKDF2-SHA256, 100.000 iteraciones). Nunca la contraseña en texto.
 
 const COOKIE = 'burole_admin';
@@ -83,6 +84,86 @@ async function login(env, req) {
   });
 }
 
+// ===== Google Sheet -> pedidos =====
+// El Apps Script del Sheet manda TODAS las filas cada vez que algo cambia. Los pedidos que vienen del Sheet
+// se guardan con id "sh_<id de fila>" y origen "sheet"; si una fila se borra del Sheet, se borra acá también.
+function igualSeguro(a, b) {
+  const x = new TextEncoder().encode(String(a)), y = new TextEncoder().encode(String(b));
+  if (x.length !== y.length) return false;
+  let d = 0;
+  for (let i = 0; i < x.length; i++) d |= x[i] ^ y[i];
+  return d === 0;
+}
+const norm = (s) => String(s == null ? '' : s).normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/\s+/g, ' ').trim();
+const PROD_BASE = [{ id: 'cm', nombre: 'Clásico mediano' }, { id: 'cg', nombre: 'Clásico grande' }, { id: 'pm', nombre: 'Pistacho mediano' }, { id: 'pg', nombre: 'Pistacho grande' }, { id: 'mini', nombre: 'Minis × 10' }];
+const CANAL_BASE = [{ id: 'web', nombre: 'Web' }, { id: 'whatsapp', nombre: 'WhatsApp' }, { id: 'instagram', nombre: 'Instagram' }, { id: 'conocido', nombre: 'Conocido' }];
+const numero = (v) => Math.round(+String(v == null ? '' : v).replace(/[^\d,.-]/g, '').replace(/\.(?=\d{3}(\D|$))/g, '').replace(',', '.') || 0);
+
+function fechaIso(v) {
+  const t = String(v || '').trim();
+  let m = t.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (m) return `${m[1]}-${m[2]}-${m[3]}`;
+  m = t.match(/^(\d{1,2})[\/.-](\d{1,2})[\/.-](\d{2,4})$/); // 27/11/2026 (formato argentino)
+  if (m) return `${m[3].length === 2 ? '20' + m[3] : m[3]}-${m[2].padStart(2, '0')}-${m[1].padStart(2, '0')}`;
+  return '';
+}
+
+async function sincronizarSheet(env, req) {
+  if (!env.SHEET_TOKEN || env.SHEET_TOKEN.length < 24) return json({ error: 'Falta configurar SHEET_TOKEN' }, 503);
+  const auth = (req.headers.get('authorization') || '').replace(/^Bearer\s+/i, '');
+  if (!igualSeguro(auth, env.SHEET_TOKEN)) return json({ error: 'Prohibido' }, 403);
+  const texto = await req.text();
+  if (texto.length > 2000000) return json({ error: 'Demasiado grande' }, 413);
+  let body;
+  try { body = JSON.parse(texto); } catch (e) { return json({ error: 'JSON inválido' }, 400); }
+  const filas = Array.isArray(body.filas) ? body.filas.slice(0, 5000) : null;
+  if (!filas) return json({ error: 'Faltan filas' }, 400);
+
+  const cfgRow = await env.DB.prepare("SELECT data FROM items WHERE kind = 'config' AND id = 'general'").first();
+  const cfg = cfgRow ? JSON.parse(cfgRow.data) : {};
+  const prodPorNombre = new Map((cfg.productos || PROD_BASE).map((x) => [norm(x.nombre), x.id]));
+  const canalPorNombre = new Map((cfg.canales || CANAL_BASE).map((x) => [norm(x.nombre), x.id]));
+
+  const { results: previos } = await env.DB.prepare("SELECT id, data FROM items WHERE kind = 'pedido' AND substr(id, 1, 3) = 'sh_'").all();
+  const previo = new Map(previos.map((r) => [r.id, JSON.parse(r.data)]));
+  const ahora = Date.now(), vistos = new Set(), stmts = [], avisos = new Set();
+
+  for (const f of filas) {
+    const idFila = String((f && f.id) || '').replace(/[^A-Za-z0-9_-]/g, '').slice(0, 60);
+    const fecha = fechaIso(f && f.fecha);
+    if (!idFila || !fecha) continue; // fila vacía o sin fecha de entrega: se ignora
+    const id = 'sh_' + idFila;
+    if (vistos.has(id)) continue;
+    vistos.add(id);
+    const items = {};
+    for (const [nombre, cant] of Object.entries(f.items || {})) {
+      const pid = prodPorNombre.get(norm(nombre)), n = numero(cant);
+      if (pid && n > 0) items[pid] = n;
+      else if (!pid && n > 0) avisos.add(`Producto desconocido: ${String(nombre).slice(0, 40)}`);
+    }
+    const pago = norm(f.pago), estado = norm(f.estado), ant = previo.get(id) || {};
+    const ped = {
+      id, origen: 'sheet', creado: ant.creado || ahora,
+      fecha, pedidoEl: fechaIso(f.fechaPedido) || fecha,
+      cliente: String(f.cliente || '').slice(0, 120), clienteId: ant.clienteId || '',
+      items, ajuste: numero(f.ajuste),
+      canal: canalPorNombre.get(norm(f.canal)) || '',
+      entrega: /envio/.test(norm(f.entrega)) ? 'envio' : 'retiro',
+      hecho: /^(hecho|si|entregado|listo)/.test(estado),
+      pagado: /^(pagado|si|cobrado)/.test(pago), sena: /^(pagado|si|cobrado|sena)/.test(pago),
+      nota: String(f.nota || '').slice(0, 1000), extra: ant.extra || {}
+    };
+    const data = JSON.stringify(ped);
+    // Solo se escribe si la fila cambió, así el panel no recarga de gusto
+    if (!previo.has(id) || JSON.stringify(ant) !== data)
+      stmts.push(env.DB.prepare('INSERT INTO items (kind, id, data, updated) VALUES (?, ?, ?, ?) ON CONFLICT(kind, id) DO UPDATE SET data = excluded.data, updated = excluded.updated').bind('pedido', id, data, ahora));
+  }
+  let borrados = 0;
+  for (const id of previo.keys()) if (!vistos.has(id)) { stmts.push(env.DB.prepare("DELETE FROM items WHERE kind = 'pedido' AND id = ?").bind(id)); borrados++; }
+  for (let i = 0; i < stmts.length; i += 50) await env.DB.batch(stmts.slice(i, i + 50));
+  return json({ ok: true, pedidos: vistos.size, cambios: stmts.length - borrados, borrados, avisos: [...avisos].slice(0, 10) });
+}
+
 async function api(env, req, url) {
   const p = url.pathname;
   if (p === '/api/datos' && req.method === 'GET') {
@@ -94,6 +175,11 @@ async function api(env, req, url) {
       else if (out[r.kind]) out[r.kind].push(d);
     }
     return json(out);
+  }
+  // Versión liviana de los datos: el panel la consulta cada 20 s y solo recarga si cambió algo (así el Sheet se ve en vivo)
+  if (p === '/api/version' && req.method === 'GET') {
+    const r = await env.DB.prepare('SELECT COUNT(*) AS n, MAX(updated) AS u FROM items').first();
+    return json({ v: `${r.n}-${r.u || 0}` });
   }
   const m = p.match(/^\/api\/item\/([a-z]+)\/([A-Za-z0-9_-]{1,64})$/);
   if (m && TIPOS.includes(m[1])) {
@@ -125,6 +211,8 @@ export default {
       if (req.headers.get('x-burole') !== '1') return json({ error: 'Prohibido' }, 403);
       return login(env, req);
     }
+    // Entrada del Google Sheet: no usa sesión, se autentica con SHEET_TOKEN en el header Authorization
+    if (p === '/api/sheet' && req.method === 'POST') return sincronizarSheet(env, req);
     if (p === '/api/logout' && req.method === 'POST') {
       const t = leerCookie(req);
       if (t) await env.DB.prepare('DELETE FROM sesiones WHERE token = ?').bind(await huella(t)).run();
