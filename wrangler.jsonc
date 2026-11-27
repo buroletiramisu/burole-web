@@ -5,5 +5,7 @@
   "assets": {
     "directory": "./",
     "not_found_handling": "404-page"
-  }
+  },
+  // Necesario para los builds de preview de ramas (npx wrangler preview)
+  "previews": {}
 }

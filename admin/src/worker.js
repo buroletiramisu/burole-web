@@ -2,7 +2,7 @@
 // Secretos del Worker: ADMIN_USER y ADMIN_HASH ("salt:hash" PBKDF2-SHA256, 100.000 iteraciones). Nunca la contraseña en texto.
 
 const COOKIE = 'burole_admin';
-const SESION_DIAS = 30;
+const SESION_DIAS = 14;
 const PUBLICAS = ['/login', '/favicon.svg', '/robots.txt'];
 const TIPOS = ['pedido', 'cliente', 'tarea', 'config'];
 
@@ -39,30 +39,42 @@ async function claveValida(pass, guardado) {
   return diff === 0;
 }
 
+// En la base se guarda el SHA-256 del token, no el token: si alguien lee la tabla no puede usar las sesiones
+async function huella(token) {
+  return hex(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(token)));
+}
+
 async function sesionValida(env, req) {
   const t = leerCookie(req);
   if (!t) return false;
-  const r = await env.DB.prepare('SELECT expira FROM sesiones WHERE token = ?').bind(t).first();
+  const r = await env.DB.prepare('SELECT expira FROM sesiones WHERE token = ?').bind(await huella(t)).first();
   return !!r && r.expira > Date.now();
 }
 
 async function login(env, req) {
   const ip = req.headers.get('cf-connecting-ip') || 'local';
   const desde = Date.now() - 15 * 60 * 1000;
-  const fallos = await env.DB.prepare('SELECT COUNT(*) AS n FROM intentos WHERE ip = ? AND ts > ?').bind(ip, desde).first();
-  if (fallos && fallos.n >= 8) return json({ error: 'Demasiados intentos. Probá de nuevo en 15 minutos.' }, 429);
+  // Límite por IP (8 fallos en 15 min) y global (40 fallos en 15 min, frena ataques que rotan IPs)
+  const fallos = await env.DB.prepare('SELECT SUM(ip = ?) AS n, COUNT(*) AS total FROM intentos WHERE ts > ?').bind(ip, desde).first();
+  if (fallos && (fallos.n >= 8 || fallos.total >= 40)) return json({ error: 'Demasiados intentos. Probá de nuevo en 15 minutos.' }, 429);
+  if (!env.ADMIN_USER || !env.ADMIN_HASH) return json({ error: 'Falta configurar el acceso.' }, 503);
 
   let body = {};
   try { body = await req.json(); } catch (e) {}
   const user = String(body.usuario || '').trim().toLowerCase();
-  const ok = user === String(env.ADMIN_USER || 'admin').toLowerCase() && (await claveValida(String(body.clave || ''), env.ADMIN_HASH));
+  // La clave se verifica siempre (aunque el usuario no coincida) para no revelar por tiempo de respuesta si el usuario existe
+  const claveOk = await claveValida(String(body.clave || ''), env.ADMIN_HASH);
+  const ok = user === String(env.ADMIN_USER).toLowerCase() && claveOk;
   if (!ok) {
-    await env.DB.prepare('INSERT INTO intentos (ip, ts) VALUES (?, ?)').bind(ip, Date.now()).run();
+    await env.DB.batch([
+      env.DB.prepare('INSERT INTO intentos (ip, ts) VALUES (?, ?)').bind(ip, Date.now()),
+      env.DB.prepare('DELETE FROM intentos WHERE ts < ?').bind(desde)
+    ]);
     return json({ error: 'Usuario o contraseña incorrectos.' }, 401);
   }
   const token = hex(crypto.getRandomValues(new Uint8Array(32)));
   await env.DB.batch([
-    env.DB.prepare('INSERT INTO sesiones (token, expira) VALUES (?, ?)').bind(token, Date.now() + SESION_DIAS * 86400000),
+    env.DB.prepare('INSERT INTO sesiones (token, expira) VALUES (?, ?)').bind(await huella(token), Date.now() + SESION_DIAS * 86400000),
     env.DB.prepare('DELETE FROM sesiones WHERE expira < ?').bind(Date.now()),
     env.DB.prepare('DELETE FROM intentos WHERE ip = ? OR ts < ?').bind(ip, desde)
   ]);
@@ -109,10 +121,13 @@ export default {
     const p = url.pathname;
     await esquema(env.DB);
 
-    if (p === '/api/login' && req.method === 'POST') return login(env, req);
+    if (p === '/api/login' && req.method === 'POST') {
+      if (req.headers.get('x-burole') !== '1') return json({ error: 'Prohibido' }, 403);
+      return login(env, req);
+    }
     if (p === '/api/logout' && req.method === 'POST') {
       const t = leerCookie(req);
-      if (t) await env.DB.prepare('DELETE FROM sesiones WHERE token = ?').bind(t).run();
+      if (t) await env.DB.prepare('DELETE FROM sesiones WHERE token = ?').bind(await huella(t)).run();
       return json({ ok: true }, 200, { 'set-cookie': `${COOKIE}=; Path=/; HttpOnly; Secure; SameSite=Strict; Max-Age=0` });
     }
 
