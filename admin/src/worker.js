@@ -124,7 +124,8 @@ async function sincronizarSheet(env, req) {
   const prodPorNombre = new Map((cfg.productos || PROD_BASE).map((x) => [norm(x.nombre), x.id]));
   const canalPorNombre = new Map((cfg.canales || CANAL_BASE).map((x) => [norm(x.nombre), x.id]));
 
-  const { results: previos } = await env.DB.prepare("SELECT id, data FROM items WHERE kind = 'pedido' AND substr(id, 1, 3) = 'sh_'").all();
+  // Los pedidos son un espejo del Sheet: se comparan contra TODOS los pedidos de la base (también los cargados a mano)
+  const { results: previos } = await env.DB.prepare("SELECT id, data FROM items WHERE kind = 'pedido'").all();
   const previo = new Map(previos.map((r) => [r.id, JSON.parse(r.data)]));
   const ahora = Date.now(), vistos = new Set(), stmts = [], avisos = new Set();
 
@@ -158,6 +159,8 @@ async function sincronizarSheet(env, req) {
     if (!previo.has(id) || JSON.stringify(ant) !== data)
       stmts.push(env.DB.prepare('INSERT INTO items (kind, id, data, updated) VALUES (?, ?, ?, ?) ON CONFLICT(kind, id) DO UPDATE SET data = excluded.data, updated = excluded.updated').bind('pedido', id, data, ahora));
   }
+  // Seguro: si el Sheet llega sin ningún pedido válido y en la base hay varios, no se borra nada (evita vaciar todo por un error de lectura)
+  if (vistos.size === 0 && previo.size > 3) return json({ error: 'El Sheet llegó vacío: no borro los pedidos por seguridad' }, 409);
   let borrados = 0;
   for (const id of previo.keys()) if (!vistos.has(id)) { stmts.push(env.DB.prepare("DELETE FROM items WHERE kind = 'pedido' AND id = ?").bind(id)); borrados++; }
   for (let i = 0; i < stmts.length; i += 50) await env.DB.batch(stmts.slice(i, i + 50));

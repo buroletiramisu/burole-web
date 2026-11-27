@@ -7,7 +7,7 @@ Cargás o cambiás un pedido en el Sheet y en menos de 30 segundos aparece en ad
 2. El Worker valida una clave secreta (`SHEET_TOKEN`) y guarda los pedidos en la base D1.
 3. El panel se fija cada 20 segundos si hubo cambios y se actualiza solo.
 
-Si borrás una fila del Sheet, el pedido se borra del panel. Los pedidos del Sheet mandan: si editás uno de esos en el panel, el próximo cambio del Sheet lo pisa. Los pedidos cargados a mano en el panel no se tocan.
+Los pedidos del panel son un **espejo del Sheet**: si borrás una fila del Sheet, el pedido se borra del panel, y un pedido cargado o editado solo en el panel se pisa o se borra con el próximo cambio del Sheet (o a los 5 minutos). Los clientes, tareas y ajustes del panel no se tocan. Por seguridad, si el Sheet llega vacío no se borra nada.
 
 ## Formato de la hoja
 Usa el Sheet **Burole General**, pestaña **Clientes Estado**, tal como está hoy. No hace falta cambiar nada:
