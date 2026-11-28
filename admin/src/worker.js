@@ -177,6 +177,8 @@ async function sincronizarSheet(env, req) {
 }
 
 // ===== Panel -> Google Sheet =====
+// El Sheet valida la columna Pedido con nombres sin tilde y en mayúscula ("Clasico Mediano"): se convierte así
+const nombreSheet = (n) => String(n || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/\S+/g, (w) => w[0].toUpperCase() + w.slice(1).toLowerCase());
 // Cada alta, cambio o borrado de un pedido en el panel se escribe primero en el Sheet (app web del Apps Script).
 // Si el Sheet no responde, no se guarda: así los dos lados nunca quedan distintos.
 async function aSheet(env, accion, idViejo, ped) {
@@ -192,7 +194,7 @@ async function aSheet(env, accion, idViejo, ped) {
     }
     cuerpo.pedido = {
       fechaPedido: ped.pedidoEl || ped.fecha, fecha: ped.fecha, cliente,
-      items: prods.filter((x) => (ped.items || {})[x.id] > 0).map((x) => ({ nombre: x.nombre, cantidad: ped.items[x.id], precio: x.precio || 0 })),
+      items: prods.filter((x) => (ped.items || {})[x.id] > 0).map((x) => ({ nombre: nombreSheet(x.nombre), cantidad: ped.items[x.id], precio: x.precio || 0 })),
       hecho: !!ped.hecho, sena: !!ped.pagado, pagado: !!ped.pagado
     };
   }
