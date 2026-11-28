@@ -155,8 +155,9 @@ async function sincronizarSheet(env, req) {
       items, ajuste: numero(f.ajuste),
       canal: canalPorNombre.get(norm(f.canal)) || '',
       entrega: /envio/.test(norm(f.entrega)) ? 'envio' : 'retiro',
-      hecho: /^(hecho|si|entregado|listo)/.test(estado),
-      pagado: /^(pagado|si|cobrado)/.test(pago), sena: /^(pagado|si|cobrado|sena)/.test(pago),
+      // Palabras exactas: "sin cobrar" empieza con "si" y antes se tomaba como pagado
+      hecho: /^(hecho|si|entregado|listo)$/.test(estado),
+      pagado: /^(pagado|pago|si|cobrado)$/.test(pago), sena: /^(pagado|pago|si|cobrado|sena|senado)$/.test(pago),
       nota: String(f.nota || '').slice(0, 1000), extra: ant.extra || {}
     };
     const data = JSON.stringify(ped);
