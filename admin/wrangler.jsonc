@@ -11,6 +11,8 @@
     "html_handling": "none",
     "not_found_handling": "none"
   },
+  // URL de la app web del Apps Script (admin/sheet/README.md). Vacía = el panel no escribe en el Sheet.
+  "vars": { "SHEET_WEBAPP_URL": "" },
   "d1_databases": [
     { "binding": "DB", "database_name": "burole-admin", "database_id": "d2074196-a6b5-4bb5-8a16-40ee8ce7a2a5" }
   ],

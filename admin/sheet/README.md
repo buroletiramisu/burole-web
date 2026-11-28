@@ -1,13 +1,15 @@
-# Google Sheet → panel en vivo
+# Google Sheet ⇄ panel en vivo (dos sentidos)
 
-Cargás o cambiás un pedido en el Sheet y en menos de 30 segundos aparece en admin.burole.com.ar (sin recargar).
+- **Sheet → panel**: cargás, cambiás o borrás un pedido en el Sheet y en ~10 segundos se ve en el admin.
+- **Panel → Sheet**: crear, editar, marcar hecho/seña/pago o borrar un pedido en el admin lo escribe en el Sheet al instante.
+- Hecho = se hizo · Seña = pagaron una parte · Pago = pagado completo. Iguales en los dos lados.
 
 ## Cómo funciona
-1. El Sheet tiene un Apps Script (`apps-script.gs`). Con cada edición manda todas las filas a `admin.burole.com.ar/api/sheet`.
-2. El Worker valida una clave secreta (`SHEET_TOKEN`) y guarda los pedidos en la base D1.
-3. El panel se fija cada 20 segundos si hubo cambios y se actualiza solo.
+1. El Apps Script (`apps-script.gs`) manda todos los pedidos a `admin.burole.com.ar/api/sheet` con cada cambio (y cada 5 min por las dudas).
+2. El panel escribe en el Sheet llamando a la app web del mismo script (`doPost`). Si el Sheet no responde, el cambio no se guarda y el panel avisa: así nunca quedan distintos.
+3. El panel consulta cada 5 segundos si hubo cambios (lee una sola fila) y se actualiza solo.
 
-Los pedidos del panel son un **espejo del Sheet**: si borrás una fila del Sheet, el pedido se borra del panel, y un pedido cargado o editado solo en el panel se pisa o se borra con el próximo cambio del Sheet (o a los 5 minutos). Los clientes, tareas y ajustes del panel no se tocan. Por seguridad, si el Sheet llega vacío no se borra nada.
+Los clientes, tareas y ajustes viven solo en el panel. Por seguridad, si el Sheet llega vacío no se borra nada.
 
 ## Formato de la hoja
 Usa el Sheet **Burole General**, pestaña **Clientes Estado**, tal como está hoy. No hace falta cambiar nada:
@@ -20,8 +22,10 @@ Usa el Sheet **Burole General**, pestaña **Clientes Estado**, tal como está ho
 - El total lo calcula el panel con los precios de Ajustes (hoy coinciden con la columna $$).
 
 ## Instalación (una vez)
-1. Generar una clave: en la terminal `openssl rand -hex 32` (o pedírsela a Claude).
-2. Cloudflare › Workers › burole-admin › Settings › Variables and Secrets › agregar secreto `SHEET_TOKEN` con esa clave.
-3. En el Sheet Burole General: Extensiones › Apps Script › pegar `apps-script.gs` › Guardar.
-4. En Apps Script: Configuración del proyecto › Propiedades del script › agregar `SHEET_TOKEN` con la misma clave.
-5. Elegir la función `instalar` › Ejecutar › aceptar permisos. Listo.
+1. Cloudflare › burole-admin › Settings › Variables and Secrets › secreto `SHEET_TOKEN` (la clave larga).
+2. En el Sheet Burole General: Extensiones › Apps Script › pegar `apps-script.gs` › Guardar.
+3. ⚙️ Configuración del proyecto › Propiedades del script › `SHEET_TOKEN` con la misma clave.
+4. Elegir la función `instalar` › Ejecutar › aceptar permisos.
+5. Implementar › Nueva implementación › tipo **App web** › Ejecutar como: **Yo** · Quién tiene acceso: **Cualquier usuario** › Implementar. Copiar la URL (termina en `/exec`) y ponerla en `SHEET_WEBAPP_URL` de `admin/wrangler.jsonc`.
+
+Si después cambiás el script, usá Implementar › Gestionar implementaciones › editar › Versión nueva, así la URL no cambia.

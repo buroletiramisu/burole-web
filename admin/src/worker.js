@@ -1,5 +1,6 @@
 // Burolé Admin: login con usuario y contraseña, sesiones y datos (pedidos, clientes, tareas, ajustes) en D1.
 // Secreto extra: SHEET_TOKEN (clave larga que comparte con el Apps Script del Google Sheet, ver admin/sheet/README.md)
+// Variable SHEET_WEBAPP_URL (wrangler.jsonc): app web del Apps Script; con ella los cambios del panel se escriben en el Sheet
 // Secretos del Worker: ADMIN_USER y ADMIN_HASH ("salt:hash" PBKDF2-SHA256, 100.000 iteraciones). Nunca la contraseña en texto.
 
 const COOKIE = 'burole_admin';
@@ -13,10 +14,14 @@ async function esquema(db) {
   await db.batch([
     db.prepare('CREATE TABLE IF NOT EXISTS items (kind TEXT NOT NULL, id TEXT NOT NULL, data TEXT NOT NULL, updated INTEGER NOT NULL, PRIMARY KEY (kind, id))'),
     db.prepare('CREATE TABLE IF NOT EXISTS sesiones (token TEXT PRIMARY KEY, expira INTEGER NOT NULL)'),
-    db.prepare('CREATE TABLE IF NOT EXISTS intentos (ip TEXT NOT NULL, ts INTEGER NOT NULL)')
+    db.prepare('CREATE TABLE IF NOT EXISTS intentos (ip TEXT NOT NULL, ts INTEGER NOT NULL)'),
+    db.prepare('CREATE TABLE IF NOT EXISTS version (id INTEGER PRIMARY KEY, v INTEGER NOT NULL)')
   ]);
   esquemaListo = true;
 }
+
+// Una sola fila que cambia con cada escritura: el panel la consulta cada pocos segundos sin leer toda la base
+const subirVersion = (db) => db.prepare('INSERT INTO version (id, v) VALUES (1, ?) ON CONFLICT(id) DO UPDATE SET v = excluded.v').bind(Date.now());
 
 const json = (data, status = 200, extra = {}) =>
   new Response(JSON.stringify(data), { status, headers: { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store', ...extra } });
@@ -95,7 +100,7 @@ function igualSeguro(a, b) {
   return d === 0;
 }
 const norm = (s) => String(s == null ? '' : s).normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/\s+/g, ' ').trim();
-const PROD_BASE = [{ id: 'cm', nombre: 'Clásico mediano' }, { id: 'cg', nombre: 'Clásico grande' }, { id: 'pm', nombre: 'Pistacho mediano' }, { id: 'pg', nombre: 'Pistacho grande' }, { id: 'mini', nombre: 'Minis × 10' }];
+const PROD_BASE = [{ id: 'cm', nombre: 'Clásico mediano', precio: 18000 }, { id: 'cg', nombre: 'Clásico grande', precio: 28000 }, { id: 'pm', nombre: 'Pistacho mediano', precio: 28000 }, { id: 'pg', nombre: 'Pistacho grande', precio: 36000 }, { id: 'mini', nombre: 'Minis × 10', precio: 0 }];
 const CANAL_BASE = [{ id: 'web', nombre: 'Web' }, { id: 'whatsapp', nombre: 'WhatsApp' }, { id: 'instagram', nombre: 'Instagram' }, { id: 'conocido', nombre: 'Conocido' }];
 const numero = (v) => Math.round(+String(v == null ? '' : v).replace(/[^\d,.-]/g, '').replace(/\.(?=\d{3}(\D|$))/g, '').replace(',', '.') || 0);
 
@@ -163,8 +168,37 @@ async function sincronizarSheet(env, req) {
   if (vistos.size === 0 && previo.size > 3) return json({ error: 'El Sheet llegó vacío: no borro los pedidos por seguridad' }, 409);
   let borrados = 0;
   for (const id of previo.keys()) if (!vistos.has(id)) { stmts.push(env.DB.prepare("DELETE FROM items WHERE kind = 'pedido' AND id = ?").bind(id)); borrados++; }
+  const cambios = stmts.length - borrados;
+  if (stmts.length) stmts.push(subirVersion(env.DB));
   for (let i = 0; i < stmts.length; i += 50) await env.DB.batch(stmts.slice(i, i + 50));
-  return json({ ok: true, pedidos: vistos.size, cambios: stmts.length - borrados, borrados, avisos: [...avisos].slice(0, 10) });
+  return json({ ok: true, pedidos: vistos.size, cambios, borrados, avisos: [...avisos].slice(0, 10) });
+}
+
+// ===== Panel -> Google Sheet =====
+// Cada alta, cambio o borrado de un pedido en el panel se escribe primero en el Sheet (app web del Apps Script).
+// Si el Sheet no responde, no se guarda: así los dos lados nunca quedan distintos.
+async function aSheet(env, accion, idViejo, ped) {
+  if (!env.SHEET_WEBAPP_URL || !env.SHEET_TOKEN) return null; // sin app web configurada: el panel guarda solo en la base
+  const cuerpo = { token: env.SHEET_TOKEN, accion, id: idViejo && idViejo.startsWith('sh_') ? idViejo.slice(3) : '' };
+  if (ped) {
+    const cfgRow = await env.DB.prepare("SELECT data FROM items WHERE kind = 'config' AND id = 'general'").first();
+    const prods = (cfgRow && JSON.parse(cfgRow.data).productos) || PROD_BASE;
+    let cliente = ped.cliente || '';
+    if (ped.clienteId) {
+      const c = await env.DB.prepare("SELECT data FROM items WHERE kind = 'cliente' AND id = ?").bind(ped.clienteId).first();
+      if (c) cliente = JSON.parse(c.data).nombre || cliente;
+    }
+    cuerpo.pedido = {
+      fechaPedido: ped.pedidoEl || ped.fecha, fecha: ped.fecha, cliente,
+      items: prods.filter((x) => (ped.items || {})[x.id] > 0).map((x) => ({ nombre: x.nombre, cantidad: ped.items[x.id], precio: x.precio || 0 })),
+      hecho: !!ped.hecho, sena: !!(ped.sena || ped.pagado), pagado: !!ped.pagado
+    };
+  }
+  const r = await fetch(env.SHEET_WEBAPP_URL, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(cuerpo), redirect: 'follow' });
+  let out = {};
+  try { out = await r.json(); } catch (e) {}
+  if (!r.ok || !out.ok) throw new Error(out.error || 'El Sheet no respondió');
+  return out; // { ok, id } con el id nuevo del pedido en el Sheet
 }
 
 async function api(env, req, url) {
@@ -181,8 +215,8 @@ async function api(env, req, url) {
   }
   // Versión liviana de los datos: el panel la consulta cada 20 s y solo recarga si cambió algo (así el Sheet se ve en vivo)
   if (p === '/api/version' && req.method === 'GET') {
-    const r = await env.DB.prepare('SELECT COUNT(*) AS n, MAX(updated) AS u FROM items').first();
-    return json({ v: `${r.n}-${r.u || 0}` });
+    const r = await env.DB.prepare('SELECT v FROM version WHERE id = 1').first();
+    return json({ v: String(r ? r.v : 0) });
   }
   const m = p.match(/^\/api\/item\/([a-z]+)\/([A-Za-z0-9_-]{1,64})$/);
   if (m && TIPOS.includes(m[1])) {
@@ -192,12 +226,24 @@ async function api(env, req, url) {
       if (texto.length > 100000) return json({ error: 'Demasiado grande' }, 413);
       let data;
       try { data = JSON.parse(texto); } catch (e) { return json({ error: 'JSON inválido' }, 400); }
-      await env.DB.prepare('INSERT INTO items (kind, id, data, updated) VALUES (?, ?, ?, ?) ON CONFLICT(kind, id) DO UPDATE SET data = excluded.data, updated = excluded.updated')
-        .bind(kind, id, JSON.stringify(data), Date.now()).run();
-      return json({ ok: true });
+      let idFinal = id;
+      if (kind === 'pedido') {
+        let s;
+        try { s = await aSheet(env, 'guardar', id, data); } catch (e) { return json({ error: 'No se pudo escribir en el Sheet: ' + e.message }, 502); }
+        if (s && s.id) { idFinal = 'sh_' + String(s.id).replace(/[^A-Za-z0-9_-]/g, '').slice(0, 60); data.id = idFinal; data.origen = 'sheet'; }
+      }
+      const stmts = [env.DB.prepare('INSERT INTO items (kind, id, data, updated) VALUES (?, ?, ?, ?) ON CONFLICT(kind, id) DO UPDATE SET data = excluded.data, updated = excluded.updated')
+        .bind(kind, idFinal, JSON.stringify(data), Date.now())];
+      if (idFinal !== id) stmts.push(env.DB.prepare('DELETE FROM items WHERE kind = ? AND id = ?').bind(kind, id));
+      stmts.push(subirVersion(env.DB));
+      await env.DB.batch(stmts);
+      return json({ ok: true, id: idFinal });
     }
     if (req.method === 'DELETE') {
-      await env.DB.prepare('DELETE FROM items WHERE kind = ? AND id = ?').bind(kind, id).run();
+      if (kind === 'pedido' && id.startsWith('sh_')) {
+        try { await aSheet(env, 'borrar', id, null); } catch (e) { return json({ error: 'No se pudo borrar en el Sheet: ' + e.message }, 502); }
+      }
+      await env.DB.batch([env.DB.prepare('DELETE FROM items WHERE kind = ? AND id = ?').bind(kind, id), subirVersion(env.DB)]);
       return json({ ok: true });
     }
   }
