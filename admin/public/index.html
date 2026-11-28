@@ -130,9 +130,7 @@ tfoot td{background:var(--panel2);font-weight:600;color:var(--crema)}
 .falta{color:var(--alerta)}
 .pg{display:inline-flex;align-items:center;gap:6px;min-height:30px;padding:0 12px;border-radius:999px;font-size:12.5px;font-weight:700;cursor:pointer;white-space:nowrap;background:transparent;border:1.5px solid}
 .pg.no{border-color:rgba(224,122,128,.6);color:var(--rojo)}
-.pg.sena{border-color:var(--alerta);color:var(--alerta)}
 .pg.si{border-color:var(--verde2);color:var(--verde2)}
-.opt.sena[aria-pressed="true"]{background:var(--alerta);border-color:var(--alerta);color:#2b1a14}
 /* Lista en celular */
 .lista{display:none;flex-direction:column;gap:10px}
 .pc{background:var(--panel);border:1px solid var(--linea);border-radius:18px;padding:14px 16px;display:flex;flex-direction:column;gap:10px;border-left:4px solid var(--bordo2)}
@@ -382,7 +380,7 @@ dialog::backdrop{background:rgba(10,5,4,.72)}
       </div>
       <div class="fgrid">
         <div class="fld"><span class="fl">Estado</span><div class="opts" id="p-hecho"><button type="button" class="opt no" data-v="0">No hecho</button><button type="button" class="opt si" data-v="1">Hecho</button></div></div>
-        <div class="fld"><span class="fl">Pago</span><div class="opts" id="p-pagado"><button type="button" class="opt no" data-v="0">Sin cobrar</button><button type="button" class="opt sena" data-v="sena">Seña 50%</button><button type="button" class="opt si" data-v="1">Pagado</button></div></div>
+        <div class="fld"><span class="fl">Pago</span><div class="opts" id="p-pagado"><button type="button" class="opt no" data-v="0">Sin cobrar</button><button type="button" class="opt si" data-v="1">Pagado</button></div></div>
       </div>
       <div class="fgrid" id="p-extra"></div>
       <div class="fld"><label class="fl" for="p-nota">Nota</label><input class="inp" id="p-nota" placeholder="Ej: sin cacao arriba"></div>
@@ -587,7 +585,7 @@ dialog::backdrop{background:rgba(10,5,4,.72)}
       kpi('Facturación', money(fact), act.length + ' pedidos · ' + unidades + ' tiramisús', 'hero') +
       kpi('Pedidos por la web', act.filter(function (p) { return p.canal === 'web'; }).length, act.length ? Math.round(act.filter(function (p) { return p.canal === 'web'; }).length / act.length * 100) + '% del total' : 'en el período') +
       kpi('Para hacer', noHechos.length, noHechos.length ? 'pedidos sin hacer' : 'nada pendiente 🎉', noHechos.length ? 'alerta' : '') +
-      kpi('Falta cobrar', money(resta), sinCobrar.length + ' pedidos' + (sinCobrar.some(function (p) { return p.sena; }) ? ' · descontando señas' : ''), sinCobrar.length ? 'alerta' : '');
+      kpi('Falta cobrar', money(resta), sinCobrar.length + ' pedidos', sinCobrar.length ? 'alerta' : '');
 
     var ph = noHechos.slice().sort(function (a, b) { return a.fecha < b.fecha ? -1 : 1; }).slice(0, 8);
     $('para-hacer').innerHTML = ph.length ? '<div class="lista" style="display:flex">' + ph.map(tarjetaPedido).join('') + '</div>' : '<p class="vacio">No hay pedidos pendientes. Cargá uno con “+ Nuevo pedido”.</p>';
@@ -608,9 +606,9 @@ dialog::backdrop{background:rgba(10,5,4,.72)}
 
   // ===== PEDIDOS =====
   function estBtn(p) { return '<button type="button" class="est ' + (p.hecho ? 'si' : 'no') + '" data-hecho="' + esc(p.id) + '">' + (p.hecho ? 'Hecho' : 'No hecho') + '</button>'; }
-  function estPago(p) { return p.pagado ? 'si' : p.sena ? 'sena' : 'no'; }
-  function restante(p) { return p.pagado ? 0 : p.sena ? total(p) / 2 : total(p); }
-  var PAGO_TXT = { no: 'Sin cobrar', sena: 'Seña 50%', si: 'Pagado' };
+  function estPago(p) { return p.pagado ? 'si' : 'no'; }
+  function restante(p) { return p.pagado ? 0 : total(p); }
+  var PAGO_TXT = { no: 'Sin cobrar', si: 'Pagado' };
   function pagoBox(p) { var e = estPago(p); return '<button type="button" class="pg ' + e + '" data-pago="' + esc(p.id) + '" title="Tocá para cambiar">' + (e === 'si' ? '✓ ' : '$ ') + PAGO_TXT[e] + '</button>'; }
   function tarjetaPedido(p) {
     return '<article class="pc' + (p.hecho ? ' hecho' : '') + '" data-edit="' + esc(p.id) + '"><div class="pc-t"><b>' + esc(nombreCli(p)) + '</b><span>' + cuando(p.fecha) + (p.canal ? ' · ' + esc(canal(p.canal)) : '') + '</span></div><ul>' +
@@ -667,9 +665,8 @@ dialog::backdrop{background:rgba(10,5,4,.72)}
     }
     if ((b = t.closest('[data-pago]'))) {
       p = buscarPed(b.dataset.pago); if (!p) return;
-      var sig = { no: 'sena', sena: 'si', si: 'no' }[estPago(p)];
-      p.sena = sig !== 'no'; p.pagado = sig === 'si';
-      guardar('pedido', p, sig === 'si' ? 'Cobrado ✓' : sig === 'sena' ? 'Seña registrada' : 'Marcado sin cobrar'); return render();
+      p.pagado = !p.pagado; p.sena = false;
+      guardar('pedido', p, p.pagado ? 'Cobrado ✓' : 'Marcado sin cobrar'); return render();
     }
     if ((b = t.closest('[data-edit]'))) return abrirPedido(buscarPed(b.dataset.edit));
     if (t.closest('[data-cerrar]')) return t.closest('dialog').close();
@@ -698,7 +695,7 @@ dialog::backdrop{background:rgba(10,5,4,.72)}
         '<div class="step"><button type="button" data-menos aria-label="Uno menos">−</button><input type="number" inputmode="numeric" min="0" aria-label="Cantidad ' + esc(x.nombre) + '"><button type="button" class="mas" data-mas aria-label="Uno más">+</button></div></div>';
     }).join('');
     $$('.pr').forEach(function (r) { r.querySelector('input').value = form.items[r.dataset.pr] || 0; });
-    opts($('p-canal'), form.canal); opts($('p-entrega'), form.entrega); opts($('p-hecho'), form.hecho ? 1 : 0); opts($('p-pagado'), form.pagado ? 1 : form.sena ? 'sena' : 0);
+    opts($('p-canal'), form.canal); opts($('p-entrega'), form.entrega); opts($('p-hecho'), form.hecho ? 1 : 0); opts($('p-pagado'), form.pagado ? 1 : 0);
     $('p-borrar').hidden = !p;
     actualizar(); hintCliente();
     $('dlg').showModal();
@@ -742,7 +739,7 @@ dialog::backdrop{background:rgba(10,5,4,.72)}
     if (!c) { c = { id: uid(), nombre: nombre, telefono: '', direccion: '', nota: '', creado: Date.now() }; D.cliente.push(c); guardar('cliente', c); }
     form.clienteId = c.id; form.cliente = c.nombre;
     form.fecha = $('p-fecha').value || HOY; form.nota = $('p-nota').value.trim();
-    form.canal = sel('p-canal'); form.entrega = sel('p-entrega'); form.hecho = sel('p-hecho') === '1'; form.pagado = sel('p-pagado') === '1'; form.sena = sel('p-pagado') !== '0'; form.pedidoEl = $('p-pedido').value || '';
+    form.canal = sel('p-canal'); form.entrega = sel('p-entrega'); form.hecho = sel('p-hecho') === '1'; form.pagado = sel('p-pagado') === '1'; form.sena = false; form.pedidoEl = $('p-pedido').value || '';
     form.canal = form.canal || '';
     $$('[data-extra]').forEach(function (i) { form.extra[i.dataset.extra] = i.value.trim(); });
     // Se guarda el precio del momento: si después cambian los precios, los pedidos viejos no se alteran
