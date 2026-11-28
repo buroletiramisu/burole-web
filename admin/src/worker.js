@@ -157,7 +157,8 @@ async function sincronizarSheet(env, req) {
       entrega: /envio/.test(norm(f.entrega)) ? 'envio' : 'retiro',
       // Palabras exactas: "sin cobrar" empieza con "si" y antes se tomaba como pagado
       hecho: /^(hecho|si|entregado|listo)$/.test(estado),
-      pagado: /^(pagado|pago|si|cobrado)$/.test(pago), sena: /^(pagado|pago|si|cobrado|sena|senado)$/.test(pago),
+      // Solo dos estados de pago: Pagado o Sin cobrar (la seña ya no se usa)
+      pagado: /^(pagado|pago|si|cobrado)$/.test(pago), sena: false,
       nota: String(f.nota || '').slice(0, 1000), extra: ant.extra || {}
     };
     const data = JSON.stringify(ped);
@@ -192,7 +193,7 @@ async function aSheet(env, accion, idViejo, ped) {
     cuerpo.pedido = {
       fechaPedido: ped.pedidoEl || ped.fecha, fecha: ped.fecha, cliente,
       items: prods.filter((x) => (ped.items || {})[x.id] > 0).map((x) => ({ nombre: x.nombre, cantidad: ped.items[x.id], precio: x.precio || 0 })),
-      hecho: !!ped.hecho, sena: !!(ped.sena || ped.pagado), pagado: !!ped.pagado
+      hecho: !!ped.hecho, sena: !!ped.pagado, pagado: !!ped.pagado
     };
   }
   const r = await fetch(env.SHEET_WEBAPP_URL, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(cuerpo), redirect: 'follow' });
